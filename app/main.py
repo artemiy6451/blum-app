@@ -6,6 +6,7 @@ def main() -> None:
     logger.info("Start app!")
     api = Api()
     api.get_username()
+    api.process_tasks()
 
 
 if __name__ == "__main__":
