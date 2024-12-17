@@ -1,5 +1,6 @@
 import time
 from http import HTTPStatus
+from random import randint, uniform
 from typing import Any, Callable
 
 import requests
@@ -12,6 +13,10 @@ class Api:
     balance: int
     count_tikets: int
     username: str
+    min_sleep_time: int = 30
+    max_sleep_time: int = 35
+    min_reward: int = 160
+    max_reward: int = 230
 
     def __init__(self) -> None:
         logger.debug("Init api class")
@@ -105,6 +110,9 @@ class Api:
     @error_wrapper
     def start_farming(self) -> None:
         response = self.session.post(config.urls.farming_start)
+        if response.status_code == HTTPStatus.PRECONDITION_FAILED:
+            logger.info("Need to claim reward first")
+            return
         if not response.ok:
             raise Exception(
                 "Can not start farming "
@@ -124,7 +132,7 @@ class Api:
                 "Can not claim farm "
                 f"with status code {response.status_code}: {response.text}"
             )
-        logger.info("Claim farming")
+        logger.info("Claimed")
 
     @error_wrapper
     def _get_tasks(self) -> list:
@@ -217,7 +225,6 @@ class Api:
         if keyword is None:
             response = self.session.post(url, json={})
         else:
-            print(keyword)
             response = self.session.post(url, json={"keywoard": keyword})
 
         if response.status_code == HTTPStatus.BAD_REQUEST:
@@ -254,3 +261,64 @@ class Api:
             f"Task `{response.json().get('title')}` "
             f"claimed with reward: {response.json().get('reward')}"
         )
+
+    @error_wrapper
+    def play_game(self) -> None:
+        self.get_balance()
+        if self.count_tikets <= 0:
+            logger.info("Not enough tikets to start play game")
+            return
+
+        while self.count_tikets >= 0:
+            response = self.session.post(config.urls.game_play)
+            if not response.ok:
+                raise Exception(
+                    "Can not start play "
+                    f"with status code {response.status_code}: {response.text}"
+                )
+            sleep_time = uniform(self.min_sleep_time, self.max_sleep_time)
+
+            game_id = response.json().get("gameId")
+
+            logger.info(f"Started playing game. Sleep {int(sleep_time)}s...")
+
+            time.sleep(sleep_time)
+            freezes = int((sleep_time - 30) / 3)
+
+            blum_amount = randint(self.min_reward, self.max_reward)
+            earned_points = {"BP": {"amount": blum_amount}}
+            asset_clicks = {
+                "BOMB": {"clicks": 0},
+                "CLOVER": {"clicks": blum_amount},
+                "FREEZE": {"clicks": freezes},
+            }
+
+            payload_data = {
+                "gameId": game_id,
+                "earnedPoints": earned_points,
+                "assetClicks": asset_clicks,
+            }
+
+            payload_response = self.session.post(
+                f"{config.urls.payload}/getPayload", json=payload_data
+            )
+            payload = payload_response.json().get("payload")
+            if self.claim_game(payload):
+                logger.info(f"Claimed game, earned: {blum_amount}BP")
+
+            if payload is None:
+                raise Exception("Can not parse pyload")
+            self.count_tikets -= 1
+
+    @error_wrapper
+    def claim_game(self, payload: str) -> bool:
+        response = self.session.post(config.urls.game_claim, json={"payload": payload})
+        if response.status_code == HTTPStatus.NOT_FOUND:
+            logger.debug("Can not found game")
+            return False
+        if not response.ok:
+            raise Exception(
+                "Can not calim game "
+                f"with status code {response.status_code}: {response.text}"
+            )
+        return True
