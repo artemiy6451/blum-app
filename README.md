@@ -5,6 +5,7 @@
 # Install
 ---
 Должен быть установлен poetry и make.
+Так же для запуска нужно установить [BlumPayloadGenerator](https://github.com/KobaProduction/BlumPayloadGenerator)
 
 ```zsh
 git clone https://github.com/artemiy6451/blum-app
